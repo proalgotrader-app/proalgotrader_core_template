@@ -1,0 +1,444 @@
+"""
+Base Symbols routes for ProAlgoTrader FastAPI.
+Handles syncing and listing base symbols from the global database.
+"""
+from datetime import datetime
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from sqlmodel import Session, select
+import httpx
+
+from db.database import get_global_session
+from app.models.base_symbol import BaseSymbol, BaseSymbolRead, BaseSymbolList, SyncResponse
+from app.core.config import settings
+from app.routers.auth import get_session_data
+
+router = APIRouter(prefix="/api/base-symbols", tags=["base-symbols"])
+views_router = APIRouter(tags=["base-symbols-views"])
+
+
+@views_router.get("/base-symbols", response_class=HTMLResponse)
+async def base_symbols_page(request: Request):
+    """Render base symbols page."""
+    # Check authentication
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/login", status_code=302)
+    
+    session_data = get_session_data(session_cookie)
+    if not session_data:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/login", status_code=302)
+    
+    # Read and return the HTML template
+    from pathlib import Path
+    template_path = Path(__file__).parent.parent.parent / "templates" / "base_symbols.html"
+    with open(template_path, "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+@router.get("", response_model=BaseSymbolList)
+async def list_base_symbols(
+    request: Request,
+    page: int = 1,
+    per_page: int = 20,
+    exchange: Optional[str] = None,
+    type: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_global_session)
+):
+    """
+    List all base symbols with pagination and filters.
+    
+    Query params:
+    - page: Page number (default: 1)
+    - per_page: Items per page (default: 20)
+    - exchange: Filter by exchange (NSE, NFO, BSE)
+    - type: Filter by type (Index, Stock)
+    - search: Search by symbol name
+    """"
+    # Verify user is authenticated
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    session_data = get_session_data(session_cookie)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    # Validate pagination parameters
+    if page < 1:
+        page = 1
+    if per_page < 1 or per_page > 100:
+        per_page = 50
+    
+    # Calculate offset
+    offset = (page - 1) * per_page
+    
+    # Get total count
+    total_count = len(db.exec(
+        select(BaseSymbol).where(BaseSymbol.deleted_at.is_(None))
+    ).all())
+    
+    # Get paginated symbols
+    symbols = db.exec(
+        select(BaseSymbol)
+        .where(BaseSymbol.deleted_at.is_(None))
+        .order_by(BaseSymbol.key)
+        .offset(offset)
+        .limit(per_page)
+    ).all()
+    
+    # Get last sync time
+    last_synced = db.exec(
+        select(BaseSymbol.last_synced_at)
+        .where(BaseSymbol.last_synced_at.isnot(None))
+        .order_by(BaseSymbol.last_synced_at.desc())
+        .limit(1)
+    ).first()
+    
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    return BaseSymbolList(
+        success=True,
+        base_symbols=[BaseSymbolRead.model_validate(s) for s in symbols],
+        count=total_count,
+        last_synced=last_synced,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages
+    )
+
+
+@router.post("/sync", response_model=SyncResponse)
+async def sync_base_symbols(
+    request: Request,
+    db: Session = Depends(get_global_session)
+):
+    """Sync base symbols from ProAlgoTrader API."""
+    # Verify user is authenticated and get access token
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    session_data = get_session_data(session_cookie)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    # Get access token from session
+    access_token = session_data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="No access token in session")
+    
+    # Fetch symbols from ProAlgoTrader API with authentication
+    api_url = f"{settings.API_URL}/base-symbols"
+    
+    # Prepare headers with Bearer token
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.get(api_url, headers=headers)
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Failed to fetch base symbols from API: {response.text}"
+                )
+            
+            data = response.json()
+            
+            if not data.get("success"):
+                raise HTTPException(
+                    status_code=500,
+                    detail=data.get("error", "Failed to fetch base symbols")
+                )
+            
+            api_symbols = data.get("baseSymbols", [])
+            
+            if not api_symbols:
+                return SyncResponse(
+                    success=True,
+                    message="No symbols to sync",
+                    count=0
+                )
+            
+            # Sync to local database
+            sync_time = datetime.utcnow()
+            synced_count = 0
+            
+            for api_symbol in api_symbols:
+                # Check if symbol exists by key
+                existing = db.exec(
+                    select(BaseSymbol).where(BaseSymbol.key == api_symbol["key"])
+                ).first()
+                
+                if existing:
+                    # Update existing
+                    existing.exchange = api_symbol.get("exchange", existing.exchange)
+                    existing.value = api_symbol.get("value", existing.value)
+                    existing.type = api_symbol.get("type", existing.type)
+                    existing.strike_size = api_symbol.get("strikeSize", existing.strike_size)
+                    existing.last_synced_at = sync_time
+                    existing.updated_at = sync_time
+                    if api_symbol.get("deletedAt"):
+                        # Handle soft delete
+                        existing.deleted_at = datetime.fromisoformat(
+                            api_symbol["deletedAt"].replace("Z", "+00:00")
+                        )
+                    else:
+                        existing.deleted_at = None
+                    db.add(existing)
+                else:
+                    # Create new
+                    new_symbol = BaseSymbol(
+                        id=api_symbol.get("id", str(api_symbol.get("id", ""))),
+                        exchange=api_symbol.get("exchange", ""),
+                        key=api_symbol.get("key", ""),
+                        value=api_symbol.get("value", ""),
+                        type=api_symbol.get("type", ""),
+                        strike_size=api_symbol.get("strikeSize", 0),
+                        last_synced_at=sync_time,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(new_symbol)
+                
+                synced_count += 1
+            
+            db.commit()
+            
+            # Get synced symbols (non-deleted)
+            synced_symbols = db.exec(
+                select(BaseSymbol)
+                .where(BaseSymbol.deleted_at.is_(None))
+                .order_by(BaseSymbol.key)
+            ).all()
+            
+            return SyncResponse(
+                success=True,
+                message=f"Successfully synced {synced_count} symbols",
+                count=len(synced_symbols),
+                base_symbols=[BaseSymbolRead.model_validate(s) for s in synced_symbols]
+            )
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="API request timed out")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"API request failed: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+
+@router.get("/stats")
+async def get_base_symbols_stats(
+    request: Request,
+    db: Session = Depends(get_global_session)
+):
+    """Get base symbols statistics."""
+    # Verify user is authenticated
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    session_data = get_session_data(session_cookie)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    # Get all non-deleted symbols
+    all_symbols = db.exec(
+        select(BaseSymbol).where(BaseSymbol.deleted_at.is_(None))
+    ).all()
+    
+    # Calculate stats
+    total_count = len(all_symbols)
+    indices = sum(1 for s in all_symbols if s.type == "Index")
+    stocks = sum(1 for s in all_symbols if s.type == "Stock")
+    exchanges = list(set(s.exchange for s in all_symbols))
+    
+    return {
+        "success": True,
+        "total": total_count,
+        "indices": indices,
+        "stocks": stocks,
+        "exchanges": exchanges
+    }
+
+
+@router.get("/count")
+async def get_base_symbols_count(
+    request: Request,
+    db: Session = Depends(get_global_session)
+):
+    """Get count of base symbols."""
+    # Verify user is authenticated
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    session_data = get_session_data(session_cookie)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    count = db.exec(
+        select(BaseSymbol)
+        .where(BaseSymbol.deleted_at.is_(None))
+    ).all()
+    
+    return {"success": True, "count": len(count)}
+
+
+@router.post("/sync-nse-fno")
+async def sync_nse_fno_symbols(
+    request: Request,
+    broker: str = "angel-one",
+    dry_run: bool = False,
+    db: Session = Depends(get_global_session)
+):
+    """
+    Sync NSE F&O activated symbols from broker catalog.
+    
+    Args:
+        broker: Broker catalog to use (default: angel-one)
+        dry_run: If True, preview changes without saving
+    
+    Returns:
+        Detailed sync results:
+        - Total catalog symbols
+        - Symbols to add
+        - Symbols to update
+        - Errors/warnings
+        
+    Example:
+        POST /api/base-symbols/sync-nse-fno?dry_run=true  # Preview
+        POST /api/base-symbols/sync-nse-fno                # Sync
+    
+    Notes:
+        - Filters to NSE F&O only (excludes BSE)
+        - Excludes non-F&O stocks
+        - Extracts strike_size from catalog options
+        - Extracts lot_size from catalog contracts
+    """
+    # Verify user is authenticated
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    session_data = get_session_data(session_cookie)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    try:
+        from app.services.base_symbols.base_symbol_extractor import BaseSymbolExtractor
+        
+        # Initialize extractor
+        extractor = BaseSymbolExtractor(db, broker)
+        
+        # Extract NSE F&O symbols from catalog
+        catalog_symbols = extractor.extract_nse_fno_symbols()
+        
+        # Get counts
+        indices = [s for s in catalog_symbols if s.type.value == "Index"]
+        stocks = [s for s in catalog_symbols if s.type.value == "Stock"]
+        
+        # If dry run, return preview
+        if dry_run:
+            # Get existing symbols from database
+            existing_symbols = db.exec(
+                select(BaseSymbol).where(BaseSymbol.deleted_at.is_(None))
+            ).all()
+            existing_values = {s.value for s in existing_symbols}
+            
+            # Categorize
+            to_add = []
+            to_update = []
+            unchanged = []
+            
+            for catalog_sym in catalog_symbols:
+                if catalog_sym.value not in existing_values:
+                    to_add.append({
+                        "value": catalog_sym.value,
+                        "type": catalog_sym.type.value,
+                        "strike_size": catalog_sym.strike_size,
+                        "lot_size": catalog_sym.lot_size,
+                    })
+                else:
+                    existing = next((s for s in existing_symbols if s.value == catalog_sym.value), None)
+                    if existing:
+                        if (existing.strike_size != catalog_sym.strike_size or
+                            existing.lot_size != catalog_sym.lot_size):
+                            to_update.append({
+                                "value": catalog_sym.value,
+                                "old_strike_size": existing.strike_size,
+                                "new_strike_size": catalog_sym.strike_size,
+                                "old_lot_size": existing.lot_size,
+                                "new_lot_size": catalog_sym.lot_size,
+                            })
+                        else:
+                            unchanged.append(catalog_sym.value)
+            
+            return {
+                "success": True,
+                "dry_run": True,
+                "broker": broker,
+                "catalog_summary": {
+                    "namespace": "NSE",
+                    "exchange": "NFO",
+                    "total": len(catalog_symbols),
+                    "indices": len(indices),
+                    "stocks": len(stocks),
+                },
+                "preview": {
+                    "to_add": to_add,
+                    "to_update": to_update,
+                    "unchanged_count": len(unchanged),
+                },
+                "database_before": {
+                    "total": len(existing_symbols),
+                },
+                "message": f"Preview: Would add {len(to_add)}, update {len(to_update)}, keep {len(unchanged)} unchanged"
+            }
+        
+        # Actual sync
+        stats = extractor.store_symbols(catalog_symbols)
+        
+        # Get updated count
+        total_after = len(db.exec(
+            select(BaseSymbol).where(BaseSymbol.deleted_at.is_(None))
+        ).all())
+        
+        return {
+            "success": True,
+            "dry_run": False,
+            "broker": broker,
+            "catalog_summary": {
+                "namespace": "NSE",
+                "exchange": "NFO",
+                "total": len(catalog_symbols),
+                "indices": len(indices),
+                "stocks": len(stocks),
+            },
+            "sync_results": {
+                "added": stats["added"],
+                "updated": stats["updated"],
+                "unchanged": stats["unchanged"],
+                "added_symbols": stats["added_symbols"][:(10)],  # First 10
+                "updated_symbols": stats["updated_symbols"][:(10)],  # First 10
+            },
+            "database_summary": {
+                "total_before": total_after - stats["added"],
+                "total_after": total_after,
+                "nse_fno_coverage": f"{len(catalog_symbols) / total_after * 100:.1f}%",
+            },
+            "message": f"Synced {len(catalog_symbols)} NSE F&O symbols. Added {stats['added']}, updated {stats['updated']}."
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")

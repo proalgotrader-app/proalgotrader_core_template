@@ -1,0 +1,139 @@
+{
+  "timezones": [
+    {
+      "value": "UTC",
+      "label": "Coordinated Universal Time (UTC)",
+      "city": "Universal"
+    },
+    {
+      "value": "Asia/Kolkata",
+      "label": "India Standard Time (IST) - UTC+5:30",
+      "city": "Mumbai, Delhi, Bangalore"
+    },
+    {
+      "value": "America/New_York",
+      "label": "Eastern Time (ET) - UTC-5/-4",
+      "city": "New York, Boston, Miami"
+    },
+    {
+      "value": "America/Chicago",
+      "label": "Central Time (CT) - UTC-6/-5",
+      "city": "Chicago, Dallas, Houston"
+    },
+    {
+      "value": "America/Denver",
+      "label": "Mountain Time (MT) - UTC-7/-6",
+      "city": "Denver, Phoenix, Salt Lake City"
+    },
+    {
+      "value": "America/Los_Angeles",
+      "label": "Pacific Time (PT) - UTC-8/-7",
+      "city": "Los Angeles, San Francisco, Seattle"
+    },
+    {
+      "value": "Europe/London",
+      "label": "Greenwich Mean Time (GMT) - UTC+0/+1",
+      "city": "London, Dublin, Lisbon"
+    },
+    {
+      "value": "Europe/Paris",
+      "label": "Central European Time (CET) - UTC+1/+2",
+      "city": "Paris, Berlin, Rome, Madrid"
+    },
+    {
+      "value": "Europe/Moscow",
+      "label": "Moscow Standard Time - UTC+3",
+      "city": "Moscow, St. Petersburg"
+    },
+    {
+      "value": "Asia/Dubai",
+      "label": "Gulf Standard Time (GST) - UTC+4",
+      "city": "Dubai, Abu Dhabi"
+    },
+    {
+      "value": "Asia/Singapore",
+      "label": "Singapore Time (SGT) - UTC+8",
+      "city": "Singapore, Kuala Lumpur"
+    },
+    {
+      "value": "Asia/Hong_Kong",
+      "label": "Hong Kong Time (HKT) - UTC+8",
+      "city": "Hong Kong"
+    },
+    {
+      "value": "Asia/Shanghai",
+      "label": "China Standard Time (CST) - UTC+8",
+      "city": "Shanghai, Beijing"
+    },
+    {
+      "value": "Asia/Tokyo",
+      "label": "Japan Standard Time (JST) - UTC+9",
+      "city": "Tokyo, Osaka"
+    },
+    {
+      "value": "Asia/Seoul",
+      "label": "Korea Standard Time (KST) - UTC+9",
+      "city": "Seoul"
+    },
+    {
+      "value": "Australia/Sydney",
+      "label": "Australian Eastern Time (AET) - UTC+10/+11",
+      "city": "Sydney, Melbourne"
+    },
+    {
+      "value": "Australia/Perth",
+      "label": "Australian Western Time (AWT) - UTC+8",
+      "city": "Perth"
+    },
+    {
+      "value": "Pacific/Auckland",
+      "label": "New Zealand Time (NZT) - UTC+12/+13",
+      "city": "Auckland, Wellington"
+    },
+    {
+      "value": "America/Toronto",
+      "label": "Eastern Time (ET) - UTC-5/-4",
+      "city": "Toronto, Montreal"
+    },
+    {
+      "value": "America/Vancouver",
+      "label": "Pacific Time (PT) - UTC-8/-7",
+      "city": "Vancouver"
+    },
+    {
+      "value": "America/Sao_Paulo",
+      "label": "Brasilia Time (BRT) - UTC-3",
+      "city": "São Paulo, Rio de Janeiro"
+    },
+    {
+      "value": "Asia/Jakarta",
+      "label": "Western Indonesia Time (WIB) - UTC+7",
+      "city": "Jakarta"
+    },
+    {
+      "value": "Asia/Bangkok",
+      "label": "Indochina Time (ICT) - UTC+7",
+      "city": "Bangkok, Hanoi"
+    },
+    {
+      "value": "Asia/Manila",
+      "label": "Philippines Time (PHT) - UTC+8",
+      "city": "Manila"
+    },
+    {
+      "value": "Europe/Amsterdam",
+      "label": "Central European Time (CET) - UTC+1/+2",
+      "city": "Amsterdam, Brussels"
+    },
+    {
+      "value": "Europe/Zurich",
+      "label": "Central European Time (CET) - UTC+1/+2",
+      "city": "Zurich, Geneva"
+    },
+    {
+      "value": "Europe/Frankfurt",
+      "label": "Central European Time (CET) - UTC+1/+2",
+      "city": "Frankfurt, Munich"
+    }
+  ]
+}
