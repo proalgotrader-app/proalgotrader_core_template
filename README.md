@@ -5,17 +5,10 @@ Minimal template for algorithmic trading with FastAPI.
 ## Quick Start
 
 ```bash
-# Clone this repository
-git clone https://github.com/proalgotrader-app/proalgotrader_core_template.git
-cd proalgotrader_core_template
-
 # Install dependencies
 uv sync
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your credentials
-
+# Configure environment (see Environment Variables below)
 # Run the application
 uv run fastapi dev
 ```
@@ -50,17 +43,16 @@ proalgotrader_core_template/
 
 ## Environment Variables
 
-Create a `.env` file with the following:
+Create a `.env` file with the following **required** variables:
 
 ```env
-# Required
+# Required - Get from https://proalgotrader.com
 PROJECT_KEY=your_project_key
 PROJECT_SECRET=your_project_secret
-SECRET_KEY=your_secret_key
 
-# Optional
-REMOTE_API_URL=https://proalgotrader.com
-LOCAL_API_URL=http://localhost:8000
+# Required - OAuth credentials for authentication
+OAUTH_CLIENT_ID=your_oauth_client_id
+OAUTH_CLIENT_SECRET=your_oauth_client_secret
 ```
 
 ## Development
