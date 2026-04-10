@@ -46,13 +46,17 @@ proalgotrader_core_template/
 Create a `.env` file with the following **required** variables:
 
 ```env
-# Required - Get from https://proalgotrader.com
-PROJECT_KEY=your_project_key
-PROJECT_SECRET=your_project_secret
+# Required - OAuth credentials from https://proalgotrader.com
+OAUTH_APP_ID=your-oauth-app-id-here
+OAUTH_APP_SECRET=your-oauth-app-secret-here
+OAUTH_REDIRECT_URI=http://localhost:8000/oauth/callback
 
-# Required - OAuth credentials for authentication
-OAUTH_CLIENT_ID=your_oauth_client_id
-OAUTH_CLIENT_SECRET=your_oauth_client_secret
+# Required - Project credentials from ProAlgoTrader dashboard
+PROJECT_KEY=your-project-key-here
+PROJECT_SECRET=your-project-secret-here
+
+# Required - Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+SECRET_KEY=your-secret-key-change-in-production
 ```
 
 ## Development
