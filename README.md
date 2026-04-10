@@ -54,9 +54,6 @@ OAUTH_REDIRECT_URI=http://localhost:8000/oauth/callback
 # Required - Project credentials from ProAlgoTrader dashboard
 PROJECT_KEY=your-project-key-here
 PROJECT_SECRET=your-project-secret-here
-
-# Required - Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
-SECRET_KEY=your-secret-key-change-in-production
 ```
 
 ## Development
